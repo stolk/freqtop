@@ -1,7 +1,7 @@
 # freqtop
 Monitor for the CPU Frequency Scaling under Linux.
 
-![screenshot](images/screenshot0.png","screenshot")
+![screenshot](images/screenshot0.png "screenshot")
 
 
 ## Introduction
