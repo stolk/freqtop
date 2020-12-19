@@ -162,6 +162,8 @@ int get_cpu_stat( int cpu, const char* name )
 	char line [128];
 	snprintf( fname, sizeof(fname), "/sys/devices/system/cpu/cpufreq/policy%d/%s", cpu, name );
 	FILE* f = fopen( fname, "rb" );
+	if ( !f )
+		return -1;
 	const int numread = fread( line, 1, sizeof(line), f );
 	assert( numread > 0 );
 	fclose(f);
@@ -283,9 +285,11 @@ int main( int argc, char* argv[] )
 
 	for ( int cpu=0; cpu<num_cpus; ++cpu )
 	{
-		freq_bas[ cpu ] = get_cpu_stat( cpu, "base_frequency"   );
 		freq_min[ cpu ] = get_cpu_stat( cpu, "scaling_min_freq" );
 		freq_max[ cpu ] = get_cpu_stat( cpu, "scaling_max_freq" );
+		freq_bas[ cpu ] = get_cpu_stat( cpu, "base_frequency"   );
+		if ( freq_bas[ cpu ] <= 0 )
+			freq_bas[ cpu ] = freq_max[ cpu ];
 		coreids [ cpu ] = get_cpu_coreid( cpu );
 		fprintf( stderr, "cpu %d(core%d): %d/%d/%d\n", cpu, coreids[cpu], freq_min[cpu], freq_bas[cpu], freq_max[cpu] );
 	}
@@ -337,8 +341,11 @@ int main( int argc, char* argv[] )
 	snprintf( label_max, sizeof(label_max), "%3.1f", freq_max[0] / 1000000.0f );
 	int y=1; int x=1;
 	sprintf( legend + y * imw + x, "%s", label_max );
-	y=(imh/2) - (barh/2) * freq_bas[0] / (float) freq_max[0];
-	sprintf( legend + y * imw + x, "%s", label_bas );
+	if ( freq_bas[0] != freq_max[0] )
+	{
+		y=(imh/2) - (barh/2) * freq_bas[0] / (float) freq_max[0];
+		sprintf( legend + y * imw + x, "%s", label_bas );
+	}
 	y=(imh/2) - (barh/2) * freq_min[0] / (float) freq_max[0];
 	sprintf( legend + y * imw + x, "%s", label_min );
 
