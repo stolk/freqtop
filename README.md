@@ -1,6 +1,9 @@
 # freqtop
 Monitor for the CPU Frequency Scaling under Linux.
 
+![screenshot](images/screenshot0.png","screenshot")
+
+
 ## Introduction
 
 The freqtop tool will show all logical cores in your system, with the bars representing the frequency scale.
