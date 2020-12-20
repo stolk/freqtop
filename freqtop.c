@@ -282,6 +282,7 @@ int main( int argc, char* argv[] )
 	float usages[ num_cpus ];
 	int coreids [ num_cpus ];
 	int rank    [ num_cpus ];
+	int policy  [ num_cpus ];
 
 	for ( int cpu=0; cpu<num_cpus; ++cpu )
 	{
@@ -290,6 +291,16 @@ int main( int argc, char* argv[] )
 		freq_bas[ cpu ] = get_cpu_stat( cpu, "base_frequency"   );
 		if ( freq_bas[ cpu ] <= 0 )
 			freq_bas[ cpu ] = freq_max[ cpu ];
+		if ( freq_min[ cpu ] < 0 || freq_max[ cpu ] < 0 )
+		{
+			assert( cpu>0 );
+			policy[ cpu ] = 0;
+			freq_min[ cpu ] = freq_min[ 0 ];
+			freq_bas[ cpu ] = freq_bas[ 0 ];
+			freq_max[ cpu ] = freq_max[ 0 ];
+		}
+		else
+			policy[ cpu ] = cpu;
 		coreids [ cpu ] = get_cpu_coreid( cpu );
 		fprintf( stderr, "cpu %d(core%d): %d/%d/%d\n", cpu, coreids[cpu], freq_min[cpu], freq_bas[cpu], freq_max[cpu] );
 	}
@@ -321,8 +332,10 @@ int main( int argc, char* argv[] )
 		fprintf(stderr, "rank %d: %d\n", i, rank[i] );
 	}
 
-	const int tabw = (imw-4) / num_cpus;
-	const int barw = tabw>1 ? tabw-1 : 1;
+	int tabw = (imw-4) / num_cpus;
+	tabw = tabw < 2 ? 2 : tabw;
+	int barw = tabw-1;
+	barw = barw > 8 ? 8 : barw;
 	const int barh = imh-4;
 	const int res = (int) roundf( freq_max[ 0 ] / (float)barh );
 	const int marginx = (imw - tabw*num_cpus)/2;
@@ -360,7 +373,10 @@ int main( int argc, char* argv[] )
 			done=1;
 	
 		for ( int cpu=0; cpu<num_cpus; ++cpu )
-			freq_cur[ cpu ] = get_cpu_stat( cpu, "scaling_cur_freq" );
+		{
+			const int pol = policy[ cpu ];
+			freq_cur[ cpu ] = get_cpu_stat( pol, "scaling_cur_freq" );
+		}
 		for ( int r=0; r<num_cpus; ++r )
 		{
 			const int cpu = rank[ r ];
@@ -379,7 +395,8 @@ int main( int argc, char* argv[] )
 				{
 					int x = marginx + r * tabw + bx;
 					int y = imh - 2 - i;
-					im[ y*imw + x ] = c;
+					if ( x < imw )
+						im[ y*imw + x ] = c;
 				}
 			}
 		}
@@ -392,7 +409,8 @@ int main( int argc, char* argv[] )
 			for ( int by=0; by<=barh; ++by )
 			{
 				int y = 2 + by;
-				im [ y*imw + x ] = by==cy ? ora : 0x00000000;
+				if ( x < imw )
+					im [ y*imw + x ] = by==cy ? ora : 0x00000000;
 			}
 		}
 		printf( CURSORHOME );
