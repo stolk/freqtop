@@ -22,7 +22,7 @@ Press ESCAPE to stop freqtop.
 
 ## Known issues
 
-* Does not respond to resizing of terminal.
+* ~~Does not respond to resizing of terminal.~~
 * Missing manual page.
 
 ## Copyright

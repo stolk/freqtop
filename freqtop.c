@@ -1,4 +1,4 @@
-// imcat.c
+// freqtop.c
 //
 // by Abraham Stolk.
 // This software is in the Public Domain.
@@ -12,12 +12,28 @@
 #include <termios.h>
 #include <string.h>
 #include <inttypes.h>
+#include <signal.h>
+#include <sys/ioctl.h>
 
 
 static int termw=0, termh=0;
 static int doubleres=0;
 static int blend=1;
 static unsigned char termbg[3] = { 0,0,0 };
+
+static int imw=0;
+static int imh=0;
+static uint32_t* im=0;
+static char* legend=0;
+
+static int tabw=0;
+static int barw=0;
+static int barh=0;
+static int res=0;
+static int marginx=0;
+
+static int resized=1;
+
 
 #if defined(_WIN64)
 #	include <windows.h>
@@ -62,6 +78,70 @@ static void set_console_mode()
 #endif
 
 
+
+static void setup_image( int num_cpus )
+{
+	if (im) free(im);
+	if (legend) free(legend);
+
+	imw = termw;
+	imh = 2*(termh-1);
+	const size_t sz = imw*imh*4;
+	im = (uint32_t*) malloc(sz);
+	memset( im, 0x00, sz );
+
+	legend = (char*) malloc( imw*(imh/2) );
+	memset( legend, 0x00, imw*(imh/2) );
+
+	// Figure out layout.
+	tabw = (imw-4) / num_cpus;
+	tabw = tabw < 2 ? 2 : tabw;
+	barw = tabw-1;
+	barw = barw > 8 ? 8 : barw;
+	barh = imh-4;
+	marginx = (imw - tabw*num_cpus)/2;
+
+	// Draw border into image.
+	for ( int y=0; y<imh; ++y )
+		for ( int x=0; x<imw; ++x )
+		{
+			uint32_t b = 0x80 + (y/2) * 0xff / imh;
+			uint32_t g = 0xff - b;
+			uint32_t r = 0x00;
+			uint32_t a = 0xff;
+			uint32_t colour = a<<24 | b<<16 | g<<8 | r<<0;
+			im[y*imw+x] = x==0 || x==imw-1 || y==0 || y==imh-1 ? colour : 0x0;
+		}
+}
+
+
+static void setup_legend( int* freq_bas, int* freq_min, int* freq_max )
+{
+	// Set up the legend.
+	char label_bas[16];
+	char label_min[16];
+	char label_max[16];
+	snprintf( label_bas, sizeof(label_bas), "%3.1f", freq_bas[0] / 1000000.0f );
+	snprintf( label_min, sizeof(label_min), "%3.1f", freq_min[0] / 1000000.0f );
+	snprintf( label_max, sizeof(label_max), "%3.1f", freq_max[0] / 1000000.0f );
+	int y=1; int x=1;
+	sprintf( legend + y * imw + x, "%s", label_max );
+	if ( freq_bas[0] != freq_max[0] )
+	{
+		y=(imh/2) - (barh/2) * freq_bas[0] / (float) freq_max[0];
+		sprintf( legend + y * imw + x, "%s", label_bas );
+	}
+	y=(imh/2) - (barh/2) * freq_min[0] / (float) freq_max[0];
+	sprintf( legend + y * imw + x, "%s", label_min );
+}
+
+
+static void sigwinchHandler(int sig)
+{
+	resized = 1;
+}
+
+
 static struct termios orig_termios;
 
 void disableRawMode()
@@ -86,6 +166,8 @@ void enableRawMode()
 #define RESETALL  	"\x1b[0m"
 
 #define CURSORHOME	"\x1b[1;1H"
+
+#define CLEARSCREEN	"\x1b[2J"
 
 
 #if defined(_WIN64)
@@ -253,36 +335,18 @@ int main( int argc, char* argv[] )
 	// Step 0: Windows cmd.exe needs to be put in proper console mode.
 	set_console_mode();
 
-	// Step 1: figure out the width and height of terminal.
-	get_terminal_size();
-	fprintf( stderr, "Your terminal is size %dx%d\n", termw, termh );
-
-	const int imw = termw;
-	const int imh = 2*(termh-1);
-	const size_t sz = imw*imh*4;
-	uint32_t* im = (uint32_t*) malloc(sz);
-	memset( im, 0x00, sz );
-
-	char* legend = (char*) malloc( imw*(imh/2) );
-	memset( legend, 0x00, imw*(imh/2) );
-
-	for ( int y=0; y<imh; ++y )
-		for ( int x=0; x<imw; ++x )
-		{
-			im[y*imw+x] = x==0 || x==imw-1 || y==0 || y==imh-1 ? 0xffff0000 : 0x0;
-		}
-
+	// How many cores in this system?
 	const int num_cpus = sysconf( _SC_NPROCESSORS_ONLN );
 	fprintf( stderr, "Found %d cpus.\n", num_cpus );
 
-	int freq_bas[ num_cpus ];
-	int freq_min[ num_cpus ];
-	int freq_max[ num_cpus ];
-	int freq_cur[ num_cpus ];
-	float usages[ num_cpus ];
-	int coreids [ num_cpus ];
-	int rank    [ num_cpus ];
-	int policy  [ num_cpus ];
+	int freq_bas[ num_cpus ];	// Base frequencies.
+	int freq_min[ num_cpus ];	// Min frequencies.
+	int freq_max[ num_cpus ];	// Max frequencies.
+	int freq_cur[ num_cpus ];	// Current frequencies.
+	float usages[ num_cpus ];	// Core loads.
+	int coreids [ num_cpus ];	// Core ids (could map to hyperthread sibling.)
+	int rank    [ num_cpus ];	// Ordering when displaying bars.
+	int policy  [ num_cpus ];	// Which scaling policy to use. Sometimes (rPi4) cores share 1 policy.
 
 	for ( int cpu=0; cpu<num_cpus; ++cpu )
 	{
@@ -332,41 +396,31 @@ int main( int argc, char* argv[] )
 		fprintf(stderr, "rank %d: %d\n", i, rank[i] );
 	}
 
-	int tabw = (imw-4) / num_cpus;
-	tabw = tabw < 2 ? 2 : tabw;
-	int barw = tabw-1;
-	barw = barw > 8 ? 8 : barw;
-	const int barh = imh-4;
-	const int res = (int) roundf( freq_max[ 0 ] / (float)barh );
-	const int marginx = (imw - tabw*num_cpus)/2;
-
-	const uint32_t ora = 0xff0080ff;
-	const uint32_t yel = 0xff00ffff;
-	const uint32_t grn = 0xff00ff00;
-	const uint32_t red = 0xff0000ff;
-
-	// Set up the legend.
-	char label_bas[16];
-	char label_min[16];
-	char label_max[16];
-	snprintf( label_bas, sizeof(label_bas), "%3.1f", freq_bas[0] / 1000000.0f );
-	snprintf( label_min, sizeof(label_min), "%3.1f", freq_min[0] / 1000000.0f );
-	snprintf( label_max, sizeof(label_max), "%3.1f", freq_max[0] / 1000000.0f );
-	int y=1; int x=1;
-	sprintf( legend + y * imw + x, "%s", label_max );
-	if ( freq_bas[0] != freq_max[0] )
-	{
-		y=(imh/2) - (barh/2) * freq_bas[0] / (float) freq_max[0];
-		sprintf( legend + y * imw + x, "%s", label_bas );
-	}
-	y=(imh/2) - (barh/2) * freq_min[0] / (float) freq_max[0];
-	sprintf( legend + y * imw + x, "%s", label_min );
+	const uint32_t ora = 0xff0060b0;
 
 	enableRawMode();
+
+	// Listen to changes in terminal size
+	struct sigaction sa;
+	sigemptyset( &sa.sa_mask );
+	sa.sa_flags = 0;
+	sa.sa_handler = sigwinchHandler;
+	if ( sigaction( SIGWINCH, &sa, 0 ) == -1 )
+		perror( "sigaction" );
 
 	int done=0;
 	while ( !done )
 	{
+		if ( resized )
+		{
+			printf(CLEARSCREEN);
+			get_terminal_size();
+			setup_image( num_cpus );
+			setup_legend( freq_bas, freq_min, freq_max );
+			resized = 0;
+		}
+		res = (int) roundf( freq_max[ 0 ] / (float)barh );
+
 		char c;
 		const int numr = read( STDIN_FILENO, &c, 1 );
 		if ( numr == 1 && c == 27 )
@@ -377,9 +431,9 @@ int main( int argc, char* argv[] )
 			const int pol = policy[ cpu ];
 			freq_cur[ cpu ] = get_cpu_stat( pol, "scaling_cur_freq" );
 		}
-		for ( int r=0; r<num_cpus; ++r )
+		for ( int ra=0; ra<num_cpus; ++ra )
 		{
-			const int cpu = rank[ r ];
+			const int cpu = rank[ ra ];
 			const int cid = coreids[ cpu ];
 			uint32_t fcur = freq_cur[ cpu ];
 			if ( cid != -1 && cid != cpu )
@@ -387,13 +441,29 @@ int main( int argc, char* argv[] )
 			for ( int i=0; i<barh; ++i )
 			{
 				int f = res * (i+1);
-				uint32_t c = grn;
-				if ( f >= freq_min[cpu] ) c = yel;
-				if ( f >= freq_bas[cpu] ) c = red;
-				if ( f >  fcur          ) c = c & 0x3f3f3f3f;
+				uint8_t r=0x00;
+				uint8_t g=0xc0;
+				uint8_t b=0x00;
+				uint8_t a=0xff;
+			
+				if ( f >= freq_min[cpu] ) { r=0xa0; g=0xa0; b=0x00; }
+				if ( f >= freq_bas[cpu] ) { r=0xc0; g=0x00; b=0x00; }
+				uint32_t lo = 0x30 * i / barh;
+				uint32_t hi = 0x30 + 0xc0 * i / barh;
+				r = r < lo ? lo : r > hi ? hi : r;
+				g = g < lo ? lo : g > hi ? hi : g;
+				b = b < lo ? lo : b > hi ? hi : b;
+				if ( f >  fcur )
+				{
+					r=(r>>2);
+					g=(g>>2);
+					b=(b>>2);
+					a=(a>>2);
+				}
+				uint32_t c = (a<<24) | (b<<16) | (g<<8) | (r<<0);
 				for ( int bx=1; bx<=barw; ++bx )
 				{
-					int x = marginx + r * tabw + bx;
+					int x = marginx + ra * tabw + bx;
 					int y = imh - 2 - i;
 					if ( x < imw )
 						im[ y*imw + x ] = c;
@@ -425,6 +495,7 @@ int main( int argc, char* argv[] )
 #if defined(_WIN64)
 	SetConsoleCP( oldcodepage );
 #endif
+	printf( CLEARSCREEN );
 
 	return 0;
 }
