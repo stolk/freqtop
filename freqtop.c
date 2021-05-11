@@ -1,7 +1,7 @@
 // freqtop.c
 //
 // by Abraham Stolk.
-// This software is in the Public Domain.
+// This software falls under MIT license.
 
 #include <stdio.h>
 #include <stdlib.h>
