@@ -284,12 +284,16 @@ void get_usages( int num_cpus, float* usages )
 		memset( curr, 0, sz );
 	}
 
-	FILE* f = fopen( "/proc/stat", "rb" );
-	assert( f );
+	static FILE* f = 0;
+	if ( !f )
+	{
+		f = fopen( "/proc/stat", "rb" );
+		assert( f );
+	}
 	char info[16384];
 	const int numr = fread( info, 1, sizeof(info), f );
 	assert( numr > 0 );
-	fclose(f);
+	rewind(f);
 	if ( numr < sizeof(info) )
 	{
 		info[numr] = 0;
