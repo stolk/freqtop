@@ -270,6 +270,9 @@ int get_cpu_coreid( int cpu )
 static uint32_t *prev=0;
 static uint32_t *curr=0;
 
+// Reads for each cpu: how many jiffies were spent in each state:
+//   user, nice, system, idle, iowait, irq, softirq
+// NOTE: nice is a sub category of user. iowait is a sub category of idle. (soft)irq are sub categories too.
 void get_usages( int num_cpus, float* usages )
 {
 	if ( !prev || !curr )
@@ -310,10 +313,11 @@ void get_usages( int num_cpus, float* usages )
 				prv[i] = cur[i];
 				totaldelta += deltas[i];
 			}
-			uint32_t work = deltas[0] + deltas[1] + deltas[2] + deltas[5] + deltas[6];
-			uint32_t idle = deltas[3] + deltas[4];
-			(void) idle;
-			usages[ cpu ] = work / (float) totaldelta;
+			const uint32_t user = deltas[0];
+			const uint32_t syst = deltas[2];
+			const uint32_t idle = deltas[3];
+			const uint32_t work = user + syst;
+			usages[ cpu ] = work / (float) (idle+work);
 		}
 	}
 }
