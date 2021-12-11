@@ -310,12 +310,10 @@ void get_usages( int num_cpus, float* usages )
 			assert( numscanned == 8 );
 			assert( cpunr == cpu );
 			uint32_t deltas[7];
-			uint32_t totaldelta=0;
 			for ( int i=0; i<7; ++i )
 			{
 				deltas[i] = cur[i] - prv[i];
 				prv[i] = cur[i];
-				totaldelta += deltas[i];
 			}
 			const uint32_t user = deltas[0];
 			const uint32_t syst = deltas[2];
