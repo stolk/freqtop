@@ -15,6 +15,11 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 
+#if defined(__FreeBSD__)
+#	include <sys/types.h>
+#	include <sys/sysctl.h>
+#endif
+
 
 static int termw=0, termh=0;
 static int doubleres=0;
@@ -237,7 +242,6 @@ static void print_image_double_res( int w, int h, unsigned char* data, char* leg
 }
 
 
-
 int get_cpu_stat( int cpu, const char* name )
 {
 	char fname[128];
@@ -267,9 +271,35 @@ int get_cpu_coreid( int cpu )
 }
 
 
+#if defined(__FreeBSD__)
+static int* mib_fr=0;
+static int get_cur_freq_via_sysctl( int num_cpus, int cpunr )
+{
+	if ( !mib_fr )
+	{
+		mib_fr = (int*) malloc(num_cpus * 4 * sizeof(int));
+		for ( int cpu=0; cpu<num_cpus; ++cpu )
+		{
+			char nm[80];
+			snprintf( nm, sizeof(nm), "dev.cpu.%d.freq", cpu );
+			size_t num=4;
+			const int r0 = sysctlnametomib( nm, mib_fr+cpu*4, &num );
+			assert(!r0);
+		}
+	}
+	int rv=0;
+	size_t sz = sizeof(rv);
+	const int r1 = sysctl( mib_fr+cpunr*4, 4, &rv, &sz, 0, 0 );
+	assert(!r1);
+	assert(sz==sizeof(rv));
+	return 1000 * rv;
+}
+#endif
+
+
+#if !defined(__FreeBSD__)
 static uint32_t *prev=0;
 static uint32_t *curr=0;
-
 // Reads for each cpu: how many jiffies were spent in each state:
 //   user, nice, system, idle, iowait, irq, softirq
 // NOTE: nice is a sub category of user. iowait is a sub category of idle. (soft)irq are sub categories too.
@@ -323,6 +353,56 @@ void get_usages( int num_cpus, float* usages )
 		}
 	}
 }
+#endif
+
+
+#if defined(__FreeBSD__)
+static uint64_t *prev=0;
+static uint64_t *curr=0;
+static int* mib_cp=0;
+static void get_usages_via_sysctl( int num_cpus, float* usages )
+{
+	if ( !mib_cp )
+	{
+		mib_cp = (int*) malloc(2 * sizeof(int));
+		size_t num=2;
+		const int r1 = sysctlnametomib( "kern.cp_times", mib_cp, &num );
+		assert(!r1);
+		assert(num==2);
+		size_t sz=0;
+		const int r2 = sysctl( mib_cp, 2, 0, &sz, 0, 0 );
+		assert(!r2);
+		fprintf(stderr,"sz for mib_cp is %lu\n", sz);
+	}
+	if ( !prev || !curr )
+	{
+		const size_t sz = sizeof(uint64_t) * 5 * num_cpus;
+		prev = (uint64_t*) malloc( sz );
+		curr = (uint64_t*) malloc( sz );
+		memset( prev, 0, sz );
+		memset( curr, 0, sz );
+	}
+
+	size_t sz = num_cpus * 5 * sizeof(uint64_t);
+	const int r3 = sysctl( mib_cp, 2, curr, &sz, 0, 0 );
+	assert(!r3);
+
+	for ( int cpu=0; cpu<num_cpus; ++cpu )
+	{
+		uint64_t deltas[5];
+		for ( int i=0; i<5; ++i )
+		{
+			deltas[i] = curr[cpu*5+i] - prev[cpu*5+i];
+			prev[cpu*5+i] = curr[cpu*5+i];
+		}
+		const uint64_t user = deltas[0];
+		const uint64_t syst = deltas[2];
+		const uint64_t idle = deltas[4];
+		usages[cpu] = (user+syst) / (float)(user+syst+idle);
+	}
+}
+#endif
+
 
 
 int main( int argc, char* argv[] )
@@ -354,6 +434,47 @@ int main( int argc, char* argv[] )
 	int rank    [ num_cpus ];	// Ordering when displaying bars.
 	int policy  [ num_cpus ];	// Which scaling policy to use. Sometimes (rPi4) cores share 1 policy.
 
+#if defined(__FreeBSD__)
+	(void) policy;
+	int mib_fl[num_cpus][4];
+	for ( int cpu=0; cpu<num_cpus; ++cpu )
+	{
+		char nm[80];
+		snprintf( nm, sizeof(nm), "dev.cpu.%d.freq_levels", cpu );
+		size_t num=4;
+		const int r0 = sysctlnametomib( nm, mib_fl[cpu], &num );
+		assert(!r0);
+		size_t sz=0;
+		const int r1 = sysctl( mib_fl[cpu], 4, 0, &sz, 0, 0 );
+		assert(!r1);
+		assert(sz);
+		char fl[1024];
+		const int r2 = sysctl( mib_fl[cpu], 4, fl, &sz, 0, 0 );
+		assert(!r2);
+		char* last = fl+sz-1;
+		char* p = fl;
+		int fnr=0;
+		int watt_max=0;
+		int watt_min=0;
+		while( p < last && p>=fl && fnr<20 )
+		{
+			char* mid=0;
+			char* end=0;
+			int fr = (int) strtol(p,     &mid, 10);
+			int wa = (int) strtol(mid+1, &end, 10);
+			p = end;
+			fr *= 1000;
+			if (!fnr || fr<freq_min[cpu]) freq_min[cpu]=fr;
+			if (!fnr || fr>freq_max[cpu]) freq_max[cpu]=fr;
+			if (!fnr || wa<watt_min) watt_min=wa;
+			if (!fnr || wa>watt_max) watt_max=wa;
+			fnr++;
+		}
+		fprintf(stderr,"cpu %d scales between %d .. %d with wattage between %d .. %d\n", cpu, freq_min[cpu], freq_max[cpu], watt_min, watt_max);
+		coreids[cpu] = cpu; // BAD: We assume no hyperthreading on BSD.
+		freq_bas[cpu] = (freq_max[cpu] + freq_min[cpu])/2;
+	}
+#else
 	for ( int cpu=0; cpu<num_cpus; ++cpu )
 	{
 		freq_min[ cpu ] = get_cpu_stat( cpu, "scaling_min_freq" );
@@ -374,6 +495,7 @@ int main( int argc, char* argv[] )
 		coreids [ cpu ] = get_cpu_coreid( cpu );
 		fprintf( stderr, "cpu %d(core%d): %d/%d/%d\n", cpu, coreids[cpu], freq_min[cpu], freq_bas[cpu], freq_max[cpu] );
 	}
+#endif
 
 	int corehi=-1;
 	for ( int i=0; i<num_cpus; ++i )
@@ -434,8 +556,12 @@ int main( int argc, char* argv[] )
 	
 		for ( int cpu=0; cpu<num_cpus; ++cpu )
 		{
+#if defined(__FreeBSD__)
+			freq_cur[ cpu ] = get_cur_freq_via_sysctl( num_cpus, cpu );
+#else
 			const int pol = policy[ cpu ];
 			freq_cur[ cpu ] = get_cpu_stat( pol, "scaling_cur_freq" );
+#endif
 		}
 		for ( int ra=0; ra<num_cpus; ++ra )
 		{
@@ -476,7 +602,11 @@ int main( int argc, char* argv[] )
 				}
 			}
 		}
+#if defined(__FreeBSD__)
+		get_usages_via_sysctl( num_cpus, usages );
+#else
 		get_usages( num_cpus, usages );
+#endif
 		for ( int r=0; r<num_cpus; ++r )
 		{
 			const int cpu = rank[ r ];
