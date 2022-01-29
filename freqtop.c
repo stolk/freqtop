@@ -101,10 +101,11 @@ static void setup_image( int num_cpus )
 	// Figure out layout.
 	tabw = (imw-4) / num_cpus;
 	tabw = tabw < 2 ? 2 : tabw;
-	barw = tabw-1;
-	barw = barw > 8 ? 8 : barw;
+	const int bspa = tabw-1;
+	barw = bspa > 4 ? 4 : bspa;
 	barh = imh-4;
 	marginx = (imw - tabw*num_cpus)/2;
+	marginx += (bspa-barw)/2;
 
 	// Draw border into image.
 	for ( int y=0; y<imh; ++y )
