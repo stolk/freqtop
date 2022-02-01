@@ -581,6 +581,7 @@ int main( int argc, char* argv[] )
 			
 				if ( f >= freq_min[cpu] ) { r=0xa0; g=0xa0; b=0x00; }
 				if ( f >= freq_bas[cpu] ) { r=0xc0; g=0x00; b=0x00; }
+				if ( f >  freq_max[cpu] ) { r=0x00; g=0x00; b=0x00; }
 				uint32_t lo = 0x30 * i / barh;
 				uint32_t hi = 0x30 + 0xc0 * i / barh;
 				r = r < lo ? lo : r > hi ? hi : r;
