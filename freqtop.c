@@ -485,7 +485,6 @@ int main( int argc, char* argv[] )
 			freq_bas[ cpu ] = freq_max[ cpu ];
 		if ( freq_min[ cpu ] < 0 || freq_max[ cpu ] < 0 )
 		{
-			assert( cpu>0 );
 			policy[ cpu ] = 0;
 			freq_min[ cpu ] = freq_min[ 0 ];
 			freq_bas[ cpu ] = freq_bas[ 0 ];
