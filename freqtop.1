@@ -1,0 +1,39 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" (C) Copyright 2022 Bram Stolk <b.stolk@gmail.com>,
+.\"
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH FREQTOP 1 "September  9 2022"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+freqtop \- program to monitor CPU core frequency
+.sp 1
+.SH SYNOPSIS
+.B freqtop
+.sp 1
+.SH DESCRIPTION
+The \fBfreqtop\fP tool will show all logical cores in your system, with the bars representing the frequency scale.
+.sp 1
+The green bar is at the minimum frequency level.
+.sp 1
+The yellow bar is at the base frequency level.
+.sp 1
+The red bar is at the turbo frequency level.
+.sp 1
+The orange ticks will show the load for each core. When at the top, the core is fully utilized. When at the bottom, the core is fully idle.
+.sp 1
+.SH KEYS
+Press ESCAPE to stop freqtop.
+.sp 1

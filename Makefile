@@ -4,3 +4,20 @@ freqtop: freqtop.c
 clean:
 	rm -f ./freqtop
 
+install: freqtop
+	install -d ${DESTDIR}/usr/bin
+	install -m 755 freqtop ${DESTDIR}/usr/bin/
+
+uninstall:
+	sudo rm -f ${DESTDIR}/usr/bin/freqtop
+
+DISTFILES=\
+freqtop.c \
+freqtop.1 \
+Makefile \
+README.md \
+images 
+
+tarball:
+	tar cvzf ../freqtop_1.0.orig.tar.gz ${DISTFILES}
+
