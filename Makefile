@@ -16,7 +16,10 @@ freqtop.c \
 freqtop.1 \
 Makefile \
 README.md \
-images 
+LICENSE \
+images
+
+
 
 tarball:
 	tar cvzf ../freqtop_1.0.orig.tar.gz ${DISTFILES}
