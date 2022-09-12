@@ -1,0 +1,15 @@
+Source: freqtop
+Section: contrib/utils
+Priority: optional
+Maintainer: Bram Stolk <bram.stolk@canonical.com>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13)
+Standards-Version: 4.6.1
+Homepage: https://github.com/stolk/freqtop
+
+Package: freqtop
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Shows CPU core frequencies in live graph.
+ For each logical CPU core, its frequency is plotted in a live bar graph.
