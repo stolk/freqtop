@@ -39,6 +39,8 @@ static int marginx=0;
 
 static int resized=1;
 
+static int highest_freq;	// highest max freq over all cpus.
+
 
 #if defined(_WIN64)
 #	include <windows.h>
@@ -121,23 +123,28 @@ static void setup_image( int num_cpus )
 }
 
 
-static void setup_legend( int* freq_bas, int* freq_min, int* freq_max )
+static void setup_legend( int num_cpus, int* freq_bas, int* freq_min, int* freq_max )
 {
+	// Find highest freq
+	highest_freq=-1;
+	for (int i=0; i<num_cpus; ++i)
+		highest_freq = freq_max[i] > highest_freq ? freq_max[i] : highest_freq;
+
 	// Set up the legend.
 	char label_bas[16];
 	char label_min[16];
 	char label_max[16];
-	snprintf( label_bas, sizeof(label_bas), "%3.1f", freq_bas[0] / 1000000.0f );
-	snprintf( label_min, sizeof(label_min), "%3.1f", freq_min[0] / 1000000.0f );
-	snprintf( label_max, sizeof(label_max), "%3.1f", freq_max[0] / 1000000.0f );
+	snprintf( label_bas, sizeof(label_bas), "%3.1f", freq_bas[0]  / 1000000.0f );
+	snprintf( label_min, sizeof(label_min), "%3.1f", freq_min[0]  / 1000000.0f );
+	snprintf( label_max, sizeof(label_max), "%3.1f", highest_freq / 1000000.0f );
 	int y=1; int x=1;
 	sprintf( legend + y * imw + x, "%s", label_max );
 	if ( freq_bas[0] != freq_max[0] )
 	{
-		y=(imh/2) - (barh/2) * freq_bas[0] / (float) freq_max[0];
+		y=(imh/2) - (barh/2) * freq_bas[0] / (float) highest_freq;
 		sprintf( legend + y * imw + x, "%s", label_bas );
 	}
-	y=(imh/2) - (barh/2) * freq_min[0] / (float) freq_max[0];
+	y=(imh/2) - (barh/2) * freq_min[0] / (float) highest_freq;
 	sprintf( legend + y * imw + x, "%s", label_min );
 }
 
@@ -478,9 +485,18 @@ int main( int argc, char* argv[] )
 #else
 	for ( int cpu=0; cpu<num_cpus; ++cpu )
 	{
-		freq_min[ cpu ] = get_cpu_stat( cpu, "scaling_min_freq" );
-		freq_max[ cpu ] = get_cpu_stat( cpu, "scaling_max_freq" );
-		freq_bas[ cpu ] = get_cpu_stat( cpu, "base_frequency"   );
+#if 0
+		const char* minstat = "scaling_min_freq";
+		const char* maxstat = "scaling_max_freq";
+		const char* basstat = "base_frequency";
+#else
+		const char* minstat = "cpuinfo_min_freq";
+		const char* maxstat = "cpuinfo_max_freq";
+		const char* basstat = "base_frequency";
+#endif
+		freq_min[ cpu ] = get_cpu_stat( cpu, minstat );
+		freq_max[ cpu ] = get_cpu_stat( cpu, maxstat );
+		freq_bas[ cpu ] = get_cpu_stat( cpu, basstat );
 		if ( freq_bas[ cpu ] <= 0 )
 			freq_bas[ cpu ] = freq_max[ cpu ];
 		if ( freq_min[ cpu ] < 0 || freq_max[ cpu ] < 0 )
@@ -544,10 +560,10 @@ int main( int argc, char* argv[] )
 			printf(CLEARSCREEN);
 			get_terminal_size();
 			setup_image( num_cpus );
-			setup_legend( freq_bas, freq_min, freq_max );
+			setup_legend( num_cpus, freq_bas, freq_min, freq_max );
 			resized = 0;
 		}
-		res = (int) roundf( freq_max[ 0 ] / (float)barh );
+		res = (int) roundf( highest_freq / (float)barh );
 
 		char c;
 		const int numr = read( STDIN_FILENO, &c, 1 );
