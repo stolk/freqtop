@@ -441,6 +441,7 @@ int main( int argc, char* argv[] )
 	int coreids [ num_cpus ];	// Core ids (could map to hyperthread sibling.)
 	int rank    [ num_cpus ];	// Ordering when displaying bars.
 	int policy  [ num_cpus ];	// Which scaling policy to use. Sometimes (rPi4) cores share 1 policy.
+	int lastpolicy=-1;		// Which policy did we see last.
 
 #if defined(__FreeBSD__)
 	(void) policy;
@@ -501,13 +502,16 @@ int main( int argc, char* argv[] )
 			freq_bas[ cpu ] = freq_max[ cpu ];
 		if ( freq_min[ cpu ] < 0 || freq_max[ cpu ] < 0 )
 		{
-			policy[ cpu ] = 0;
-			freq_min[ cpu ] = freq_min[ 0 ];
-			freq_bas[ cpu ] = freq_bas[ 0 ];
-			freq_max[ cpu ] = freq_max[ 0 ];
+			policy[ cpu ] = lastpolicy;
+			freq_min[ cpu ] = freq_min[ lastpolicy ];
+			freq_bas[ cpu ] = freq_bas[ lastpolicy ];
+			freq_max[ cpu ] = freq_max[ lastpolicy ];
 		}
 		else
+		{
 			policy[ cpu ] = cpu;
+			lastpolicy = cpu;
+		}
 		coreids [ cpu ] = get_cpu_coreid( cpu );
 		fprintf( stderr, "cpu %d(core%d): %d/%d/%d\n", cpu, coreids[cpu], freq_min[cpu], freq_bas[cpu], freq_max[cpu] );
 	}
