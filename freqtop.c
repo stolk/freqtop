@@ -22,7 +22,6 @@
 
 
 static int termw=0, termh=0;
-static int doubleres=0;
 static int blend=1;
 static unsigned char termbg[3] = { 0,0,0 };
 
@@ -63,7 +62,6 @@ static void set_console_mode(void)
 	SetConsoleMode( hStdout, mode );
 	oldcodepage = GetConsoleCP();
 	SetConsoleCP( 437 );
-	doubleres = 1;
 }
 #else
 static void get_terminal_size(void)
@@ -80,7 +78,6 @@ static void get_terminal_size(void)
 }
 static void set_console_mode()
 {
-	doubleres=1;
 }
 #endif
 
@@ -502,6 +499,11 @@ int main( int argc, char* argv[] )
 			freq_bas[ cpu ] = freq_max[ cpu ];
 		if ( freq_min[ cpu ] < 0 || freq_max[ cpu ] < 0 )
 		{
+			if ( lastpolicy < 0 )
+			{
+				fprintf( stderr, "No cpufreq policy found. Is cpufreq available on this system?\n" );
+				exit( 1 );
+			}
 			policy[ cpu ] = lastpolicy;
 			freq_min[ cpu ] = freq_min[ lastpolicy ];
 			freq_bas[ cpu ] = freq_bas[ lastpolicy ];
@@ -618,7 +620,7 @@ int main( int argc, char* argv[] )
 				{
 					int x = marginx + ra * tabw + bx;
 					int y = imh - 2 - i;
-					if ( x < imw )
+					if ( x >= 0 && x < imw )
 						im[ y*imw + x ] = c;
 				}
 			}
@@ -636,7 +638,7 @@ int main( int argc, char* argv[] )
 			for ( int by=0; by<=barh; ++by )
 			{
 				int y = 2 + by;
-				if ( x < imw )
+				if ( x >= 0 && x < imw )
 					im [ y*imw + x ] = by==cy ? ora : 0x00000000;
 			}
 		}
