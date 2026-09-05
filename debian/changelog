@@ -1,3 +1,9 @@
+freqtop (1.1-1) resolute; urgency=medium
+
+  * Add robustness.
+
+ -- Bram Stolk <b.stolk@gmail.com>  Sat, 05 Sep 2026 15:48:00 -0700
+
 freqtop (1.0-1) kinetic; urgency=medium
 
   * Initial release.

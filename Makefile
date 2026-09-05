@@ -19,8 +19,6 @@ README.md \
 LICENSE \
 images
 
-
-
 tarball:
-	tar cvzf ../freqtop_1.0.orig.tar.gz ${DISTFILES}
+	tar cvzf ../freqtop_1.1.orig.tar.gz ${DISTFILES}
 
